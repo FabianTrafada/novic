@@ -1,0 +1,46 @@
+# Build directories
+build/
+cmake-build-*/
+out/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Compiled binaries
+novic
+*.o
+*.a
+*.so
+*.dylib
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.cproject
+.settings/
+
+# Debug files
+*.dSYM/
+core
+vgcore.*
+
+# Backup files
+*.bak
+*.orig
+
+# Logs
+*.log
+
+# Packages
+*.deb
+*.rpm
+package/
+

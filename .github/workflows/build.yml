@@ -1,0 +1,218 @@
+name: Build Packages
+
+on:
+  push:
+    branches: [main, master]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build-deb:
+    name: Build DEB Package
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            pkg-config \
+            libgtkmm-3.0-dev \
+            libpulse-dev \
+            libgtk-layer-shell-dev \
+            dpkg-dev \
+            debhelper
+
+      - name: Configure
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+
+      - name: Build
+        run: |
+          cd build
+          make -j$(nproc)
+
+      - name: Create DEB Package
+        run: |
+          mkdir -p package/DEBIAN
+          mkdir -p package/usr/bin
+          mkdir -p package/usr/share/applications
+          mkdir -p package/usr/share/icons/hicolor/256x256/apps
+          
+          # Copy binary
+          cp build/novic package/usr/bin/
+          chmod 755 package/usr/bin/novic
+          
+          # Get version
+          VERSION="${GITHUB_REF_NAME:-0.1.0}"
+          VERSION="${VERSION#v}"
+          
+          # Create control file
+          cat > package/DEBIAN/control << EOF
+          Package: novic
+          Version: ${VERSION}
+          Section: multimedia
+          Priority: optional
+          Architecture: amd64
+          Depends: libgtkmm-3.0-1v5, libpulse0, libgtk-layer-shell0
+          Maintainer: Novic Developers
+          Description: Dynamic Island-style media player widget for Wayland
+           A sleek, floating media player widget that displays currently playing
+           media with real-time audio visualization. Features hover-to-expand
+           controls similar to Apple's Dynamic Island.
+          EOF
+          
+          # Create desktop file
+          cat > package/usr/share/applications/novic.desktop << EOF
+          [Desktop Entry]
+          Name=Novic
+          Comment=Dynamic Island Media Widget
+          Exec=novic
+          Icon=novic
+          Type=Application
+          Categories=AudioVideo;Audio;Player;
+          Keywords=media;player;music;widget;
+          EOF
+          
+          # Build package
+          dpkg-deb --build package novic_${VERSION}_amd64.deb
+
+      - name: Upload DEB Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: novic-deb
+          path: "*.deb"
+
+  build-rpm:
+    name: Build RPM Package
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          dnf install -y \
+            gcc-c++ \
+            cmake \
+            make \
+            pkg-config \
+            gtkmm30-devel \
+            pulseaudio-libs-devel \
+            gtk-layer-shell-devel \
+            rpm-build \
+            rpmdevtools
+
+      - name: Setup RPM Build Environment
+        run: rpmdev-setuptree
+
+      - name: Configure
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+
+      - name: Build
+        run: |
+          cd build
+          make -j$(nproc)
+
+      - name: Create RPM Package
+        run: |
+          # Get version
+          VERSION="${GITHUB_REF_NAME:-0.1.0}"
+          VERSION="${VERSION#v}"
+          
+          # Create spec file
+          cat > ~/rpmbuild/SPECS/novic.spec << EOF
+          Name:           novic
+          Version:        ${VERSION}
+          Release:        1%{?dist}
+          Summary:        Dynamic Island-style media player widget for Wayland
+          
+          License:        MIT
+          URL:            https://github.com/yourusername/novic
+          
+          Requires:       gtkmm30, pulseaudio-libs, gtk-layer-shell
+          
+          %description
+          A sleek, floating media player widget that displays currently playing
+          media with real-time audio visualization. Features hover-to-expand
+          controls similar to Apple's Dynamic Island.
+          
+          %install
+          mkdir -p %{buildroot}/usr/bin
+          mkdir -p %{buildroot}/usr/share/applications
+          cp %{_builddir}/../build/novic %{buildroot}/usr/bin/
+          
+          cat > %{buildroot}/usr/share/applications/novic.desktop << DESKTOP
+          [Desktop Entry]
+          Name=Novic
+          Comment=Dynamic Island Media Widget
+          Exec=novic
+          Icon=novic
+          Type=Application
+          Categories=AudioVideo;Audio;Player;
+          DESKTOP
+          
+          %files
+          /usr/bin/novic
+          /usr/share/applications/novic.desktop
+          
+          %changelog
+          * $(date "+%a %b %d %Y") Novic Developers - ${VERSION}-1
+          - Initial package
+          EOF
+          
+          # Build RPM
+          rpmbuild -bb ~/rpmbuild/SPECS/novic.spec --define "_builddir $(pwd)"
+          
+          # Copy RPM to workspace
+          cp ~/rpmbuild/RPMS/*/*.rpm .
+
+      - name: Upload RPM Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: novic-rpm
+          path: "*.rpm"
+
+  release:
+    name: Create Release
+    needs: [build-deb, build-rpm]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Download DEB Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: novic-deb
+
+      - name: Download RPM Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: novic-rpm
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            *.deb
+            *.rpm
+          generate_release_notes: true
+
