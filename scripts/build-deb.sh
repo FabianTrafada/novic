@@ -4,7 +4,10 @@ set -e
 # Build DEB package for Novic
 # Usage: ./scripts/build-deb.sh [version]
 
+# Get version from argument, or default to 0.1.0
 VERSION="${1:-0.1.0}"
+# Strip 'v' prefix if present
+VERSION="${VERSION#v}"
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="$PROJECT_DIR/build"
 PKG_DIR="$PROJECT_DIR/package"

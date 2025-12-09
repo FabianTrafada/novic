@@ -53,9 +53,12 @@ jobs:
           cp build/novic package/usr/bin/
           chmod 755 package/usr/bin/novic
           
-          # Get version
-          VERSION="${GITHUB_REF_NAME:-0.1.0}"
-          VERSION="${VERSION#v}"
+          # Get version - use tag if available, otherwise use commit-based version
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.1.0~git$(date +%Y%m%d).${GITHUB_SHA::7}"
+          fi
           
           # Create control file
           cat > package/DEBIAN/control << EOF
@@ -131,15 +134,20 @@ jobs:
 
       - name: Create RPM Package
         run: |
-          # Get version
-          VERSION="${GITHUB_REF_NAME:-0.1.0}"
-          VERSION="${VERSION#v}"
+          # Get version - use tag if available, otherwise use commit-based version
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.1.0"
+            RELEASE="0.git$(date +%Y%m%d).${GITHUB_SHA::7}"
+          fi
+          RELEASE="${RELEASE:-1}"
           
           # Create spec file
           cat > ~/rpmbuild/SPECS/novic.spec << EOF
           Name:           novic
           Version:        ${VERSION}
-          Release:        1%{?dist}
+          Release:        ${RELEASE}%{?dist}
           Summary:        Dynamic Island-style media player widget for Wayland
           
           License:        MIT
@@ -172,7 +180,7 @@ jobs:
           /usr/share/applications/novic.desktop
           
           %changelog
-          * $(date "+%a %b %d %Y") Novic Developers - ${VERSION}-1
+          * $(date "+%a %b %d %Y") Novic Developers - ${VERSION}-${RELEASE}
           - Initial package
           EOF
           
